@@ -1,5 +1,12 @@
 package  org.apache.lucene;
 
+import java.io.BufferedReader;
+import java.lang.StringBuffer;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import java.util.Map;
 import java.util.HashMap;
 
@@ -23,74 +30,35 @@ import org.apache.lucene.store.*;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.util.BytesRef;
 
-public final class SpamClassifier {
- 
-  public static final String indexDir = "/home/neis/solr-4.8.0/example/solr/collection2/data/index";
-  public static final String[] CATEGORIES = { "spam", "ham" };
-  private static int[][] confusionMatrix;
-  private static Map<String, Integer> catindex;
- 
-  public static void main(String[] args) throws Exception {
+public class SpamClassifier extends HttpServlet {
 
-    final long startTime = System.currentTimeMillis();
+    protected void doPost(HttpServletRequest request, HttpServletResponse resp) throws ServletException, IOException {
 
-    SimpleNaiveBayesClassifier classifier = new SimpleNaiveBayesClassifier();
+        StringBuffer postText = new StringBuffer();
 
-    DirectoryReader reader = DirectoryReader.open(FSDirectory.open(new File(indexDir)));  
-    AtomicReader ar = SlowCompositeReaderWrapper.wrap(reader);
-    classifier.train(ar, "text", "cat", new ClassicAnalyzer(Version.LUCENE_CURRENT));
+        String line = null;
 
-    ClassificationResult<BytesRef> result = classifier.assignClass("Is this spam or not?");
-    String classified = result.getAssignedClass().utf8ToString();
-    System.out.println(classified);
-    
-    /*
-    // This part tests classification with the same docs already stored
+        try {
+            BufferedReader reader = request.getReader();
+            while ((line = reader.readLine()) != null)
+                postText.append(line);
+        } catch (Exception e) { System.out.println(e.toString()); /*report an error*/ }
 
-    confusionMatrix = new int[CATEGORIES.length][CATEGORIES.length];
-    catindex = new HashMap<String, Integer>();
-    for (int i = 0; i < CATEGORIES.length; i++) {
-        catindex.put(CATEGORIES[i], i);
+        final long startTime = System.currentTimeMillis();
+
+        SimpleNaiveBayesClassifier classifier = new SimpleNaiveBayesClassifier();
+
+        String indexDir1 = "/home/neis/solr-4.8.0/example/solr/collection2/data/index";
+
+        DirectoryReader reader = DirectoryReader.open(FSDirectory.open(new File(indexDir1)));
+        AtomicReader ar = SlowCompositeReaderWrapper.wrap(reader);
+        classifier.train(ar, "text", "cat", new ClassicAnalyzer(Version.LUCENE_CURRENT));
+
+        ClassificationResult<BytesRef> result = classifier.assignClass(postText.toString());
+        String classified = result.getAssignedClass().utf8ToString();
+
+        reader.close();
+
+        resp.getWriter().print(classified);
     }
- 
-    final int maxdoc = reader.maxDoc();
-    for(int i = 0; i < maxdoc; i++){
-
-      Document doc = ar.document(i);
-      String correctAnswer = doc.get("cat");
-
-      final int cai = catindex.get(correctAnswer);
-
-      ClassificationResult<BytesRef> result = classifier.assignClass(doc.get("text"));
-      String classified = result.getAssignedClass().utf8ToString();
-
-      final int cli = catindex.get(classified);
-      confusionMatrix[cai][cli]++;
-    }
-
-    final long endTime = System.currentTimeMillis();
-
-    final int elapse = (int)(endTime - startTime) / 1000;
- 
-    // print results
-    int fc = 0, tc = 0;
-    for(int i = 0; i < CATEGORIES.length; i++){
-      for(int j = 0; j < CATEGORIES.length; j++){
-        System.out.printf(" %3d ", confusionMatrix[i][j]);
-        if(i == j){
-          tc += confusionMatrix[i][j];
-        }
-        else{
-          fc += confusionMatrix[i][j];
-        }
-      }
-      System.out.println();
-    }
-    float accrate = (float)tc / (float)(tc + fc);
-    float errrate = (float)fc / (float)(tc + fc);
-    System.out.printf("\n\n*** accuracy rate = %f, error rate = %f; time = %d (sec); %d docs\n", accrate, errrate, elapse, maxdoc);
-    */
- 
-    reader.close();
-  }
 }
